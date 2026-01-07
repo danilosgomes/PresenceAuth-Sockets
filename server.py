@@ -1,62 +1,54 @@
-<<<<<<< HEAD
 import socket
 
-# Configurações
-HOST = '0.0.0.0'  # 0.0.0.0 permite conexões de outros PCs
-PORT = 65432      # Porta que vamos escutar (acima de 1024)
+HOST = '0.0.0.0'
+PORT = 65432
+
+# --- Função para carregar alunos ---
+def carregar_alunos():
+    alunos = {}
+    try:
+        with open('alunos.txt', 'r', encoding='utf-8') as f:
+            for linha in f:
+                partes = linha.strip().split(',')
+                if len(partes) == 2:
+                    matricula = partes[0].strip()
+                    nome = partes[1].strip()
+                    alunos[matricula] = nome
+        print(f"[*] Banco de dados carregado: {len(alunos)} alunos.")
+        return alunos
+    except FileNotFoundError:
+        print("[!] ERRO: Arquivo alunos.txt não encontrado!")
+        return {}
+
+# --- Início do Programa ---
+alunos_validos = carregar_alunos()
 
 print(f"[*] Iniciando servidor em {HOST}:{PORT}")
 
-# Criação do Socket TCP
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.bind((HOST, PORT))
     s.listen()
-    print("[*] Aguardando conexão...")
+    print("[*] Aguardando conexões...")
     
-    # O código para aqui até alguém conectar
-    conn, addr = s.accept()
-    
-    with conn:
-        print(f"[*] Conectado por: {addr}")
-        while True:
-            # Recebe dados (max 1024 bytes)
+    while True: # Loop infinito para aceitar vários alunos (um por vez por enquanto)
+        conn, addr = s.accept()
+        with conn:
+            print(f"[*] Conexão recebida de: {addr}")
+            
             data = conn.recv(1024)
             if not data:
-                break
+                continue
             
-            mensagem = data.decode('utf-8')
-            print(f"[*] Recebido: {mensagem}")
+            # O cliente vai mandar apenas a MATRICULA por enquanto
+            matricula_recebida = data.decode('utf-8').strip()
+            print(f"[*] Tentativa de registro da matrícula: {matricula_recebida}")
             
-            # Responde ao cliente
-=======
-import socket
-
-# Configurações
-HOST = '0.0.0.0'  # 0.0.0.0 permite conexões de outros PCs
-PORT = 65432      # Porta que vamos escutar (acima de 1024)
-
-print(f"[*] Iniciando servidor em {HOST}:{PORT}")
-
-# Criação do Socket TCP
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.bind((HOST, PORT))
-    s.listen()
-    print("[*] Aguardando conexão...")
-    
-    # O código para aqui até alguém conectar
-    conn, addr = s.accept()
-    
-    with conn:
-        print(f"[*] Conectado por: {addr}")
-        while True:
-            # Recebe dados (max 1024 bytes)
-            data = conn.recv(1024)
-            if not data:
-                break
-            
-            mensagem = data.decode('utf-8')
-            print(f"[*] Recebido: {mensagem}")
-            
-            # Responde ao cliente
->>>>>>> be481868f1c041cd493071f00ca18d8fc6766f33
-            conn.sendall(b"Recebido pelo servidor!")
+            # --- AQUI ACONTECE A MÁGICA ---
+            if matricula_recebida in alunos_validos:
+                nome_aluno = alunos_validos[matricula_recebida]
+                print(f"[V] SUCESSO: Aluno {nome_aluno} registrado!")
+                msg_resposta = f"Ola {nome_aluno}, presenca registrada!"
+                conn.sendall(msg_resposta.encode('utf-8'))
+            else:
+                print(f"[X] FALHA: Matrícula {matricula_recebida} não existe.")
+                conn.sendall(b"ERRO: Matricula nao encontrada.")
