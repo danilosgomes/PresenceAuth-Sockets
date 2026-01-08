@@ -3,12 +3,18 @@ import threading
 import random
 import string
 import tkinter as tk
+import os
 from tkinter import messagebox, ttk
+import csv
+from datetime import datetime
+
+
 
 # --- CONFIGURAÇÕES ---
 HOST = '0.0.0.0'
 TCP_PORT = 65432
 UDP_PORT = 50000
+ARQUIVO_MESTRE = "Frequencia_Geral.csv" # Nome fixo para o semestre todo
 
 # Variáveis Globais
 alunos_validos = {}     # Dicionário lido do arquivo
@@ -32,6 +38,76 @@ def gerar_novo_token():
     token_atual = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(4))
     lbl_token_valor.config(text=token_atual) # Atualiza na tela
     log_msg(f"Novo Token Gerado: {token_atual}")
+
+def obter_datas_disponiveis():
+    """ Lê o cabeçalho do CSV para saber quais datas existem """
+    datas = []
+    # Adiciona HOJE como opção padrão sempre
+    hoje = datetime.now().strftime("%d-%m-%Y")
+    datas.append(hoje)
+    
+    if os.path.exists(ARQUIVO_MESTRE):
+        try:
+            with open(ARQUIVO_MESTRE, mode='r', encoding='utf-8-sig') as f:
+                leitor = csv.DictReader(f, delimiter=';')
+                colunas = leitor.fieldnames
+                
+                # Filtra tudo que NÃO é coluna fixa (Matricula, Nome, etc)
+                for col in colunas:
+                    if col not in ['Matricula', 'Nome', 'Nome do Aluno'] and col != hoje:
+                        datas.append(col)
+        except:
+            pass
+            
+    return sorted(datas) # Retorna ordenado
+
+def carregar_presencas_da_data_selecionada(event=None):
+    """ Limpa a tela e carrega os dados da data escolhida no menu """
+    
+    # 1. Descobre qual data o usuário escolheu no menu
+    data_alvo = combo_datas.get()
+    if not data_alvo:
+        data_alvo = datetime.now().strftime("%d-%m-%Y") # Fallback para hoje
+    
+    # 2. Limpa a memória RAM e a Tabela Visual (Reset)
+    global presencas_confirmadas
+    presencas_confirmadas = [] 
+    lista_presenca.delete(*lista_presenca.get_children())
+    
+    if not os.path.exists(ARQUIVO_MESTRE):
+        return
+
+    try:
+        count = 0
+        with open(ARQUIVO_MESTRE, mode='r', encoding='utf-8-sig') as f:
+            leitor = csv.DictReader(f, delimiter=';')
+            
+            # Se a data escolhida não existe no arquivo, não faz nada
+            if data_alvo not in leitor.fieldnames:
+                log_msg(f"Data {data_alvo} não encontrada no arquivo.")
+                return
+
+            for linha in leitor:
+                status = linha.get(data_alvo)
+                matr = linha['Matricula']
+                
+                # Tratamento para Nome ou Nome do Aluno (da correção anterior)
+                nome = linha.get('Nome') or linha.get('Nome do Aluno') or "Desconhecido"
+
+                if status == "PRESENCA":
+                    presencas_confirmadas.append({
+                        'matr': matr, 
+                        'nome': nome, 
+                        'ip': 'Arquivo CSV' # Indica que veio do histórico
+                    })
+                    count += 1
+        
+        # Atualiza a tabela visual com os dados carregados
+        atualizar_lista_visual()
+        log_msg(f"📅 Visualizando data: {data_alvo} ({count} presentes)")
+            
+    except Exception as e:
+        log_msg(f"Erro ao carregar data: {e}")
 
 def escutar_udp():
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -123,6 +199,72 @@ def revogar_presenca():
     log_msg(f"REVOGADO: {nome_alvo} (Matr: {matricula_alvo})")
     messagebox.showinfo("Sucesso", f"A presença de {nome_alvo} foi removida.")
 
+def exportar_relatorio():
+    if not alunos_validos:
+        messagebox.showerror("Erro", "Não há alunos carregados na base.")
+        return
+
+    data_hoje = datetime.now().strftime("%d-%m-%Y")
+    
+    # Dicionário para guardar o histórico lido do arquivo
+    # Estrutura: { '1001': {'Nome': 'Danilo', '01-01-2026': 'PRESENCA', ...} }
+    historico_geral = {}
+    cabecalhos = ['Matricula', 'Nome do Aluno']
+
+    # --- PASSO 1: LER O ARQUIVO MESTRE (SE EXISTIR) ---
+    if os.path.exists(ARQUIVO_MESTRE):
+        try:
+            with open(ARQUIVO_MESTRE, mode='r', encoding='utf-8-sig') as f:
+                leitor = csv.DictReader(f, delimiter=';')
+                cabecalhos = leitor.fieldnames # Recupera as datas antigas
+                
+                for linha in leitor:
+                    matr = linha['Matricula']
+                    historico_geral[matr] = linha
+        except Exception as e:
+            log_msg(f"Erro ao ler histórico: {e}")
+
+    # --- PASSO 2: ADICIONAR COLUNA DE HOJE (SE NECESSÁRIO) ---
+    if data_hoje not in cabecalhos:
+        cabecalhos.append(data_hoje)
+
+    # --- PASSO 3: ATUALIZAR/INSERIR DADOS DE HOJE ---
+    # Cria conjunto de presentes para acesso rápido
+    matriculas_presentes = [str(p['matr']) for p in presencas_confirmadas]
+
+    registros_finais = []
+
+    # Percorre a lista oficial de alunos (do txt) para garantir que todos apareçam
+    for matr, nome in alunos_validos.items():
+        # Pega o registro antigo desse aluno ou cria um novo vazio
+        registro_aluno = historico_geral.get(matr, {'Matricula': matr, 'Nome do Aluno': nome})
+        
+        # Define o status de hoje
+        status = "AUSENCIA"
+        if matr in matriculas_presentes:
+            status = "PRESENCA"
+        
+        # Atualiza a coluna de hoje
+        registro_aluno[data_hoje] = status
+        
+        # Garante que o nome esteja atualizado (caso tenha mudado no txt)
+        registro_aluno['Nome do Aluno'] = nome
+        
+        registros_finais.append(registro_aluno)
+
+    # --- PASSO 4: SALVAR ARQUIVO ATUALIZADO ---
+    try:
+        with open(ARQUIVO_MESTRE, mode='w', newline='', encoding='utf-8-sig') as f:
+            escritor = csv.DictWriter(f, fieldnames=cabecalhos, delimiter=';')
+            escritor.writeheader()
+            escritor.writerows(registros_finais)
+        
+        log_msg(f"Planilha atualizada: Coluna {data_hoje}")
+        messagebox.showinfo("Sucesso", f"Frequência salva em '{ARQUIVO_MESTRE}'!")
+        
+    except Exception as e:
+        messagebox.showerror("Erro", f"Falha ao salvar: {e}")
+
 # Configuração da Janela
 root = tk.Tk()
 root.title("PresenceAuth - Painel do Professor")
@@ -141,7 +283,27 @@ frame_token.pack()
 tk.Label(frame_token, text="Token da Aula:", font=("Arial", 12)).pack(side=tk.LEFT)
 lbl_token_valor = tk.Label(frame_token, text="----", font=("Arial", 20, "bold"), fg="blue")
 lbl_token_valor.pack(side=tk.LEFT, padx=10)
+
+# ... (código existente do frame_token) ...
 tk.Button(frame_token, text="Gerar Novo Token", command=gerar_novo_token).pack(side=tk.LEFT)
+
+# --- NOVO CÓDIGO: SELETOR DE DATAS ---
+frame_data = tk.Frame(root, pady=5)
+frame_data.pack()
+
+tk.Label(frame_data, text="Visualizar Frequência do dia: ").pack(side=tk.LEFT)
+
+# Cria a caixinha de seleção
+combo_datas = ttk.Combobox(frame_data, values=obter_datas_disponiveis(), state="readonly", width=15)
+combo_datas.pack(side=tk.LEFT)
+
+# Seleciona o dia de hoje por padrão
+data_hoje_str = datetime.now().strftime("%d-%m-%Y")
+combo_datas.set(data_hoje_str)
+
+# Quando o usuário mudar a data, chama a função de carregar
+combo_datas.bind("<<ComboboxSelected>>", carregar_presencas_da_data_selecionada)
+# -------------------------------------
 
 # Tabela de Presenças
 cols = ('Matrícula', 'Nome', 'IP')
@@ -153,7 +315,11 @@ lista_presenca.pack(expand=True, fill='both', padx=10)
 
 # Botão Revogar
 btn_revogar = tk.Button(root, text="REVOGAR PRESENÇA", bg="red", fg="white", command=revogar_presenca)
-btn_revogar.pack(pady=5)
+btn_revogar.pack(pady=5, fill='x', padx=20)
+
+# --- NOVO BOTÃO ---
+btn_csv = tk.Button(root, text="BAIXAR PLANILHA (.CSV)", bg="green", fg="white", font=("Arial", 10, "bold"), command=exportar_relatorio)
+btn_csv.pack(pady=5, fill='x', padx=20) # fill='x' faz o botão ficar larguinho
 
 # Log do Sistema
 tk.Label(root, text="Log do Sistema:").pack(anchor='w', padx=10)
@@ -170,6 +336,8 @@ t_udp.start()
 
 # Inicia o Token
 gerar_novo_token()
+
+carregar_presencas_da_data_selecionada()
 
 # Inicia a Janela (Loop Principal)
 root.mainloop()
