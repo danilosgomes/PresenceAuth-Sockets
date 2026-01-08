@@ -16,7 +16,9 @@ def descobrir_ip_servidor():
     udp.settimeout(2.0)
     
     try:
-        udp.sendto("connect with me", ('255.255.255.255', UDP_PORT))
+        # CORREÇÃO IMPORTANTE: Adicionado .encode() ou b"" para enviar bytes
+        mensagem_busca = "connect with me".encode('utf-8')
+        udp.sendto(mensagem_busca, ('255.255.255.255', UDP_PORT))
         
         data, addr = udp.recvfrom(1024)
         if data.decode('utf-8') == "ok":
@@ -69,9 +71,9 @@ def enviar_presenca():
             
             resposta = s.recv(1024).decode('utf-8')
             
-            if "SUCESSO" in resposta or "Ola" in resposta:
+            if "Olá" in resposta or "Confirmada" in resposta or "AVISO" in resposta:
                 messagebox.showinfo("Sucesso", resposta)
-                lbl_status.config(text="Presença Registrada!", fg="blue")
+                lbl_status.config(text="Resposta Recebida!", fg="blue")
             else:
                 messagebox.showerror("Erro de Validação", resposta)
                 

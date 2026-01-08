@@ -40,7 +40,7 @@ def obter_datas_disponiveis():
     
     if os.path.exists(ARQUIVO_MESTRE):
         try:
-            with open(ARQUIVO_MESTRE, 'r', encoding='utf-8') as f:
+            with open(ARQUIVO_MESTRE, 'r', encoding='utf-8-sig') as f:
                 leitor = csv.DictReader(f, delimiter=';')
                 colunas = leitor.fieldnames
                 
@@ -67,7 +67,7 @@ def carregar_presencas_da_data_selecionada(event=None):
 
     try:
         count = 0
-        with open(ARQUIVO_MESTRE, 'r', encoding='utf-8') as f:
+        with open(ARQUIVO_MESTRE, 'r', encoding='utf-8-sig') as f:
             leitor = csv.DictReader(f, delimiter=';')
             
             if data_alvo not in leitor.fieldnames:
@@ -77,8 +77,8 @@ def carregar_presencas_da_data_selecionada(event=None):
             for linha in leitor:
                 status = linha.get(data_alvo)
                 matr = linha['Matricula']
-
-                nome = linha.get('Nome do Aluno')
+                # Tenta pegar 'Nome', se não existir pega 'Nome do Aluno'
+                nome = linha.get('Nome') or linha.get('Nome do Aluno')
 
                 if status == "PRESENCA":
                     presencas_confirmadas.append({
@@ -100,6 +100,7 @@ def escutar_udp():
         udp.bind((HOST, UDP_PORT))
         while True:
             msg, addr = udp.recvfrom(1024)
+            # O cliente manda "connect with me", a gente responde "ok"
             if msg.decode('utf-8').strip() == "connect with me":
                 udp.sendto(b"ok", addr)
     except: pass
@@ -124,11 +125,11 @@ def tratar_cliente(conn, addr):
                 matr, token_recebido = msg
 
                 if token_recebido != token_atual:
-                    conn.sendall("ERRO: Token inválido.")
+                    conn.sendall("ERRO: Token inválido.".encode('utf-8'))
                     return
                 
                 if matr not in alunos_validos:
-                    conn.sendall("ERRO: Matricula não encontrada.")
+                    conn.sendall("ERRO: Matricula não encontrada.".encode('utf-8'))
                     return
 
                 nome = alunos_validos[matr]
@@ -136,12 +137,13 @@ def tratar_cliente(conn, addr):
                 if matr not in [p['matr'] for p in presencas_confirmadas]:
                     presencas_confirmadas.append({'matr': matr, 'nome': nome, 'ip': addr[0]})
                     atualizar_lista_visual()
-                    conn.sendall("Olá {nome}, Presença Confirmada!".encode('utf-8'))
-                    log_msg("Presença: {nome} ({matr})")
+                    msg_sucesso = f"Olá {nome}, Presença Confirmada!"
+                    conn.sendall(msg_sucesso.encode('utf-8'))
+                    log_msg(f"Presença: {nome} ({matr})")
                 else:
-                    conn.sendall("AVISO: Você já registrou sua presença.")
+                    conn.sendall("AVISO: Você já registrou sua presença.".encode('utf-8'))
             else:
-                conn.sendall("ERRO: Formato inválido.")
+                conn.sendall("ERRO: Formato inválido.".encode('utf-8'))
         except Exception as e:
             print(e)
 
@@ -181,15 +183,24 @@ def exportar_relatorio():
         return
 
     data_hoje = datetime.now().strftime("%d-%m-%Y")
- 
     historico_geral = {}
-    cabecalhos = ['Matricula', 'Nome do Aluno']
+    
+    # --- CORREÇÃO DO ERRO DO CSV ---
+    # Define um padrão, mas tenta detectar o que já existe no arquivo
+    coluna_nome_usada = 'Nome do Aluno' 
+    cabecalhos = ['Matricula', coluna_nome_usada]
 
     if os.path.exists(ARQUIVO_MESTRE):
         try:
             with open(ARQUIVO_MESTRE, 'r', encoding='utf-8-sig') as f:
                 leitor = csv.DictReader(f, delimiter=';')
                 cabecalhos = leitor.fieldnames
+                
+                # Detecta se o arquivo usa 'Nome' ou 'Nome do Aluno'
+                if 'Nome' in cabecalhos:
+                    coluna_nome_usada = 'Nome'
+                elif 'Nome do Aluno' in cabecalhos:
+                    coluna_nome_usada = 'Nome do Aluno'
                 
                 for linha in leitor:
                     matr = linha['Matricula']
@@ -201,21 +212,20 @@ def exportar_relatorio():
         cabecalhos.append(data_hoje)
 
     matriculas_presentes = [str(p['matr']) for p in presencas_confirmadas]
-
     registros_finais = []
 
     for matr, nome in alunos_validos.items():
+        # Cria registro usando a chave detectada
+        registro_aluno = historico_geral.get(matr, {'Matricula': matr, coluna_nome_usada: nome})
         
-        registro_aluno = historico_geral.get(matr, {'Matricula': matr, 'Nome do Aluno': nome})
+        # Garante que estamos atualizando a coluna certa
+        registro_aluno[coluna_nome_usada] = nome
         
         status = "AUSENCIA"
         if matr in matriculas_presentes:
             status = "PRESENCA"
         
         registro_aluno[data_hoje] = status
-        
-        registro_aluno['Nome do Aluno'] = nome
-        
         registros_finais.append(registro_aluno)
 
     try:
