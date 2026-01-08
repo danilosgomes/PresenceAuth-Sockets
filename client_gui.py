@@ -3,69 +3,41 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-TCP_PORT = 60000
+TCP_PORT_LOCAL = 60000
 UDP_PORT = 50000
+NGROK_HOST_PADRAO = "0.tcp.sa.ngrok.io" 
 
-def descobrir_ip_servidor():
+def conectar_e_enviar(ip_destino, porta_destino):
     
-    lbl_status.config(text="Buscando servidor", fg="orange")
-    root.update()
-    
-    udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    udp.settimeout(2.0)
-    
-    try:
-        # CORREÇÃO IMPORTANTE: Adicionado .encode() ou b"" para enviar bytes
-        mensagem_busca = "connect with me".encode('utf-8')
-        udp.sendto(mensagem_busca, ('255.255.255.255', UDP_PORT))
-        
-        data, addr = udp.recvfrom(1024)
-        if data.decode('utf-8') == "ok":
-            ip_encontrado = addr[0]
-            entry_ip.delete(0, tk.END)
-            entry_ip.insert(0, ip_encontrado)
-            lbl_status.config(text=f"Servidor encontrado: {ip_encontrado}", fg="green")
-            return
-            
-    except socket.timeout:
-        lbl_status.config(text="Servidor não encontrado automaticamente. Digite o IP.", fg="red")
-    except Exception as e:
-        lbl_status.config(text=f"Erro na busca: {str(e)}", fg="red")
-    finally:
-        udp.close()
-
-def enviar_presenca():
-    ip = entry_ip.get()
     matricula = entry_matr.get()
     token = entry_token.get()
-    
-    if not ip or not matricula or not token:
-        messagebox.showwarning("Campos vazios", "Por favor, preencha todos os campos.")
+
+    if not matricula or not token:
+        messagebox.showwarning("Campos Vazios", "Preencha sua Matrícula e o Token da aula antes de conectar.")
         return
-    
+
+    lbl_status.config(text=f"Conectando a {ip_destino}:{porta_destino}", fg="orange")
+    root.update()
+
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(2) 
+            s.settimeout(5)
             
             try:
-                s.connect((ip, TCP_PORT))
+                s.connect((ip_destino, int(porta_destino)))
             except socket.timeout:
-                messagebox.showerror("IP incorreto ou inacessível", 
-                    f"O sistema tentou conectar em '{ip}' mas não obteve resposta.\n"
-                    "Verifique se:\n"
-                    "1. O IP está digitado corretamente.\n"
-                    "2. Você e o professor estão na mesma rede.")
+                messagebox.showerror("Tempo Esgotado", 
+                    f"Não consegui conectar em:\n{ip_destino}:{porta_destino}\n\n"
+                    "Verifique:\n1. Se o endereço/porta estão corretos.\n2. Se sua internet está funcionando.")
                 return
             except socket.gaierror:
-                messagebox.showerror("IP inválido", "O formato do IP está errado.\nUse o formato numérico (ex: 192.168.0.10).")
+                messagebox.showerror("Endereço Inválido", "Não consegui encontrar esse servidor.\nO endereço do Ngrok pode estar errado.")
                 return
             except ConnectionRefusedError:
-                messagebox.showerror("Servidor desligado", "Encontramos uma máquina com esse IP, porém pode ser que seja ou não do professor.\nCaso seja, peça para ele iniciar o servidor.")
+                messagebox.showerror("Servidor Fechado", "O computador foi encontrado, mas o programa do professor não está aceitando conexões.")
                 return
             
             s.settimeout(None) 
-
             mensagem = f"{matricula},{token}"
             s.sendall(mensagem.encode('utf-8'))
             
@@ -76,51 +48,125 @@ def enviar_presenca():
                 lbl_status.config(text="Resposta Recebida!", fg="blue")
             else:
                 messagebox.showerror("Erro de Validação", resposta)
+                lbl_status.config(text="Erro na validação", fg="red")
                 
     except Exception as e:
-        messagebox.showerror("Erro Desconhecido", f"Ocorreu um erro inesperado: {str(e)}")
+        messagebox.showerror("Erro Desconhecido", f"Ocorreu um erro técnico: {str(e)}")
+        lbl_status.config(text="Erro técnico", fg="red")
 
-# --- INTERFACE GRÁFICA (GUI) ---
+
+def acao_enviar_local():
+
+    ip = entry_ip_local.get()
+    if not ip:
+        messagebox.showwarning("Atenção", "O IP do servidor não foi encontrado.\nClique na lupa ou digite manualmente.")
+        return
+    
+    conectar_e_enviar(ip, TCP_PORT_LOCAL)
+
+def acao_enviar_remoto():
+
+    porta = entry_porta_ngrok.get()
+    host = entry_host_ngrok.get() 
+    
+    if not porta.isdigit():
+        messagebox.showerror("Erro", "A porta deve conter apenas números.")
+        return
+    
+    if not host:
+        messagebox.showerror("Erro", "O endereço do Ngrok não pode estar vazio.")
+        return
+
+    conectar_e_enviar(host, porta)
+
+def descobrir_ip_udp():
+    """ O Radar Local """
+    lbl_status.config(text="Escaneando rede local...", fg="orange")
+    entry_ip_local.delete(0, tk.END)
+    root.update()
+    
+    udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    udp.settimeout(2.0)
+    
+    try:
+        udp.sendto("connect with me".encode('utf-8'), ('255.255.255.255', UDP_PORT))
+        data, addr = udp.recvfrom(1024)
+        
+        if data.decode('utf-8') == "ok":
+            ip_encontrado = addr[0]
+            entry_ip_local.insert(0, ip_encontrado)
+            lbl_status.config(text=f"Servidor Local: {ip_encontrado}", fg="green")
+        else:
+            lbl_status.config(text="Resposta estranha recebida.", fg="red")
+            
+    except socket.timeout:
+        lbl_status.config(text="Servidor local não encontrado.", fg="red")
+    except Exception as e:
+        lbl_status.config(text=f"Erro no radar: {e}", fg="red")
+    finally:
+        udp.close()
 
 root = tk.Tk()
-root.title("Portal do Aluno - Chamada")
-root.geometry("350x400")
+root.title("Portal do Aluno - Híbrido")
+root.geometry("400x480")
 root.resizable(False, False)
 
-# Estilo e Título
-tk.Label(root, text="Registrar Presença", font=("Arial", 16, "bold")).pack(pady=15)
+frame_topo = tk.Frame(root, pady=10, padx=10)
+frame_topo.pack(fill="x")
 
-# Campo IP (Preenchido auto, mas editável)
-frame_ip = tk.Frame(root)
-frame_ip.pack(pady=5)
-tk.Label(frame_ip, text="IP do Professor:").pack(anchor="w")
-entry_ip = tk.Entry(frame_ip, width=30)
-entry_ip.pack(side=tk.LEFT)
-# Botãozinho de "Re-scan" ao lado do IP
-btn_scan = tk.Button(frame_ip, text="🔍", command=lambda: threading.Thread(target=descobrir_ip_servidor).start())
-btn_scan.pack(side=tk.LEFT, padx=5)
+tk.Label(frame_topo, text="1. Seus Dados", font=("Arial", 10, "bold")).pack(anchor="w")
 
-# Campo Matrícula
-tk.Label(root, text="Sua Matrícula:").pack(pady=(10, 0))
-entry_matr = tk.Entry(root, width=35)
-entry_matr.pack()
+tk.Label(frame_topo, text="Sua Matrícula:").pack(anchor="w")
+entry_matr = tk.Entry(frame_topo)
+entry_matr.pack(fill="x")
 
-# Campo Token
-tk.Label(root, text="Código da Sala (Token):").pack(pady=(10, 0))
-entry_token = tk.Entry(root, width=15, font=("Arial", 14), justify='center')
-entry_token.pack()
+tk.Label(frame_topo, text="Token da Aula:").pack(anchor="w")
+entry_token = tk.Entry(frame_topo, justify="center", font=("Arial", 12))
+entry_token.pack(fill="x")
 
-# Botão Principal
-btn_enviar = tk.Button(root, text="CONFIRMAR PRESENÇA", bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), height=2, width=25, command=enviar_presenca)
-btn_enviar.pack(pady=25)
+tk.Label(root, text="2. Escolha como conectar", font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=(15,0))
 
-# Barra de Status (Rodapé)
+abas = ttk.Notebook(root)
+abas.pack(expand=True, fill="both", padx=10, pady=5)
+
+tab_local = tk.Frame(abas)
+abas.add(tab_local, text="IP (LAN)")
+
+tk.Label(tab_local, text="Conexão Automática").pack(pady=10)
+
+frame_scan = tk.Frame(tab_local)
+frame_scan.pack()
+
+tk.Label(frame_scan, text="IP Local:").pack(side=tk.LEFT)
+entry_ip_local = tk.Entry(frame_scan, width=15)
+entry_ip_local.pack(side=tk.LEFT, padx=5)
+btn_scan = tk.Button(frame_scan, text="Buscar", command=lambda: threading.Thread(target=descobrir_ip_udp).start())
+btn_scan.pack(side=tk.LEFT)
+
+tk.Button(tab_local, text="CONFIRMAR PRESENÇA", bg="#4CAF50", fg="white", font=("Arial", 11, "bold"), 
+          command=acao_enviar_local).pack(pady=20, fill="x", padx=20)
+
+tab_remoto = tk.Frame(abas)
+abas.add(tab_remoto, text="NGROK (WAN)")
+
+tk.Label(tab_remoto, text="Conexão via Túnel").pack(pady=10)
+
+tk.Label(tab_remoto, text="Endereço Base:").pack()
+entry_host_ngrok = tk.Entry(tab_remoto, justify="center", width=30)
+entry_host_ngrok.insert(0, NGROK_HOST_PADRAO)
+entry_host_ngrok.pack()
+
+tk.Label(tab_remoto, text="Porta:", font=("Arial", 9, "bold")).pack(pady=(10,0))
+entry_porta_ngrok = tk.Entry(tab_remoto, justify="center", font=("Arial", 14), width=10)
+entry_porta_ngrok.pack(pady=5)
+
+tk.Button(tab_remoto, text="CONFIRMAR PRESENÇA", bg="#4CAF50", fg="white", font=("Arial", 11, "bold"), 
+          command=acao_enviar_remoto).pack(pady=10, fill="x", padx=20)
+
 lbl_status = tk.Label(root, text="Pronto.", bd=1, relief=tk.SUNKEN, anchor=tk.W)
 lbl_status.pack(side=tk.BOTTOM, fill=tk.X)
 
-# --- INICIALIZAÇÃO ---
-
-# Tenta descobrir o servidor assim que abre a janela (em uma thread para não travar)
-threading.Thread(target=descobrir_ip_servidor, daemon=True).start()
+threading.Thread(target=descobrir_ip_udp, daemon=True).start()
 
 root.mainloop()

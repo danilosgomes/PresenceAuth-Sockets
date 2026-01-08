@@ -71,7 +71,7 @@ def carregar_presencas_da_data_selecionada(event=None):
             leitor = csv.DictReader(f, delimiter=';')
             
             if data_alvo not in leitor.fieldnames:
-                log_msg(f"Data {data_alvo} não encontrada no arquivo.")
+                log_msg(f"Data {data_alvo} não encontrada no arquivo. Data criada.")
                 return
 
             for linha in leitor:
@@ -281,7 +281,7 @@ lista_presenca.pack(expand=True, fill='both', padx=10)
 btn_revogar = tk.Button(root, text="REVOGAR PRESENÇA", bg="red", fg="white", command=revogar_presenca)
 btn_revogar.pack(pady=5, fill='x', padx=20)
 
-btn_csv = tk.Button(root, text="BAIXAR PLANILHA (.CSV)", bg="green", fg="white", font=("Arial", 10, "bold"), command=exportar_relatorio)
+btn_csv = tk.Button(root, text="SALVAR (.CSV)", bg="green", fg="white", font=("Arial", 10, "bold"), command=exportar_relatorio)
 btn_csv.pack(pady=5, fill='x', padx=20) 
 
 tk.Label(root, text="Log do Sistema:").pack(anchor='w', padx=10)
