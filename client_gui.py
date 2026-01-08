@@ -7,76 +7,66 @@ TCP_PORT = 60000
 UDP_PORT = 50000
 
 def descobrir_ip_servidor():
-    """ Tenta encontrar o IP do professor automaticamente via UDP """
-    lbl_status.config(text="Buscando servidor...", fg="orange")
+    
+    lbl_status.config(text="Buscando servidor", fg="orange")
     root.update()
     
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    udp.settimeout(3.0) # Espera 3 segundos
+    udp.settimeout(2.0)
     
     try:
-        # Grita na rede
-        udp.sendto(b"connect with me", ('255.255.255.255', UDP_PORT))
+        udp.sendto("connect with me", ('255.255.255.255', UDP_PORT))
         
-        # Espera resposta
         data, addr = udp.recvfrom(1024)
         if data.decode('utf-8') == "ok":
             ip_encontrado = addr[0]
             entry_ip.delete(0, tk.END)
-            entry_ip.insert(0, ip_encontrado) # Preenche o campo IP
+            entry_ip.insert(0, ip_encontrado)
             lbl_status.config(text=f"Servidor encontrado: {ip_encontrado}", fg="green")
             return
             
     except socket.timeout:
-        lbl_status.config(text="Servidor não encontrado auto. Digite o IP.", fg="red")
+        lbl_status.config(text="Servidor não encontrado automaticamente. Digite o IP.", fg="red")
     except Exception as e:
         lbl_status.config(text=f"Erro na busca: {str(e)}", fg="red")
     finally:
         udp.close()
 
 def enviar_presenca():
-    """ Pega os dados da tela e envia via TCP """
     ip = entry_ip.get()
     matricula = entry_matr.get()
     token = entry_token.get()
     
-    # Validações básicas visuais
     if not ip or not matricula or not token:
-        messagebox.showwarning("Campos Vazios", "Por favor, preencha todos os campos.")
+        messagebox.showwarning("Campos vazios", "Por favor, preencha todos os campos.")
         return
     
-    # Tenta conectar e enviar
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            # Tenta conectar por 3 segundos. Se passar disso, assume que o IP está errado/inacessível
-            s.settimeout(3) 
+            s.settimeout(2) 
             
             try:
                 s.connect((ip, TCP_PORT))
             except socket.timeout:
-                # AQUI ESTA A MUDANÇA: Traduzindo o Timeout
-                messagebox.showerror("IP Incorreto ou Inacessível", 
-                    f"O sistema tentou conectar em '{ip}' mas não obteve resposta.\n\n"
+                messagebox.showerror("IP incorreto ou inacessível", 
+                    f"O sistema tentou conectar em '{ip}' mas não obteve resposta.\n"
                     "Verifique se:\n"
                     "1. O IP está digitado corretamente.\n"
-                    "2. Você e o professor estão na mesma rede Wi-Fi.")
+                    "2. Você e o professor estão na mesma rede.")
                 return
             except socket.gaierror:
-                messagebox.showerror("IP Inválido", "O formato do IP está errado.\nUse o formato numérico (ex: 192.168.0.10).")
+                messagebox.showerror("IP inválido", "O formato do IP está errado.\nUse o formato numérico (ex: 192.168.0.10).")
                 return
             except ConnectionRefusedError:
-                messagebox.showerror("Servidor Desligado", "Encontramos o computador, mas o programa do professor parece fechado.\nPeça para ele iniciar o Server.")
+                messagebox.showerror("Servidor desligado", "Encontramos uma máquina com esse IP, porém pode ser que seja ou não do professor.\nCaso seja, peça para ele iniciar o servidor.")
                 return
             
-            # Se conectou, volta o timeout para o padrão e envia os dados
             s.settimeout(None) 
-            
-            # Protocolo: MATRICULA,TOKEN
+
             mensagem = f"{matricula},{token}"
             s.sendall(mensagem.encode('utf-8'))
             
-            # Recebe resposta
             resposta = s.recv(1024).decode('utf-8')
             
             if "SUCESSO" in resposta or "Ola" in resposta:

@@ -45,7 +45,7 @@ def obter_datas_disponiveis():
                 colunas = leitor.fieldnames
                 
                 for col in colunas:
-                    if col not in ['Matricula', 'Nome do Aluno'] and col != hoje:
+                    if col not in ['Matricula','Nome','Nome do Aluno'] and col != hoje:
                         datas.append(col)
         except:
             pass
@@ -139,7 +139,7 @@ def tratar_cliente(conn, addr):
                     conn.sendall("Olá {nome}, Presença Confirmada!".encode('utf-8'))
                     log_msg("Presença: {nome} ({matr})")
                 else:
-                    conn.sendall("AVISO: Voce já registrou sua presença.")
+                    conn.sendall("AVISO: Você já registrou sua presença.")
             else:
                 conn.sendall("ERRO: Formato inválido.")
         except Exception as e:
@@ -187,7 +187,7 @@ def exportar_relatorio():
 
     if os.path.exists(ARQUIVO_MESTRE):
         try:
-            with open(ARQUIVO_MESTRE, mode='r', encoding='utf-8-sig') as f:
+            with open(ARQUIVO_MESTRE, 'r', encoding='utf-8-sig') as f:
                 leitor = csv.DictReader(f, delimiter=';')
                 cabecalhos = leitor.fieldnames
                 
