@@ -3,11 +3,8 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-# --- CONFIGURAÇÕES ---
+TCP_PORT = 60000
 UDP_PORT = 50000
-TCP_PORT = 65432
-
-# --- LÓGICA DE REDE ---
 
 def descobrir_ip_servidor():
     """ Tenta encontrar o IP do professor automaticamente via UDP """
@@ -20,11 +17,11 @@ def descobrir_ip_servidor():
     
     try:
         # Grita na rede
-        udp.sendto(b"ONDE_ESTA_O_PROFESSOR?", ('255.255.255.255', UDP_PORT))
+        udp.sendto(b"connect with me", ('255.255.255.255', UDP_PORT))
         
         # Espera resposta
         data, addr = udp.recvfrom(1024)
-        if data.decode('utf-8') == "ESTOU_AQUI":
+        if data.decode('utf-8') == "ok":
             ip_encontrado = addr[0]
             entry_ip.delete(0, tk.END)
             entry_ip.insert(0, ip_encontrado) # Preenche o campo IP
@@ -90,7 +87,7 @@ def enviar_presenca():
                 
     except Exception as e:
         messagebox.showerror("Erro Desconhecido", f"Ocorreu um erro inesperado: {str(e)}")
-        
+
 # --- INTERFACE GRÁFICA (GUI) ---
 
 root = tk.Tk()
