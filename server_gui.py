@@ -15,7 +15,7 @@ ARQUIVO_MESTRE = "Frequencia_Geral.csv"
 
 alunos_validos = {} 
 presencas_confirmadas = []
-token_atual = "----"
+token_atual = ""
 
 def carregar_alunos():
     global alunos_validos
@@ -147,9 +147,6 @@ def tratar_cliente(conn, addr):
         except Exception as e:
             print(e)
 
-
-# INTERFACE GRÁFICA
-
 def log_msg(texto):
     txt_log.insert(tk.END, texto + "\n")
     txt_log.see(tk.END)
@@ -185,8 +182,6 @@ def exportar_relatorio():
     data_hoje = datetime.now().strftime("%d-%m-%Y")
     historico_geral = {}
     
-    # --- CORREÇÃO DO ERRO DO CSV ---
-    # Define um padrão, mas tenta detectar o que já existe no arquivo
     coluna_nome_usada = 'Nome do Aluno' 
     cabecalhos = ['Matricula', coluna_nome_usada]
 
@@ -196,7 +191,6 @@ def exportar_relatorio():
                 leitor = csv.DictReader(f, delimiter=';')
                 cabecalhos = leitor.fieldnames
                 
-                # Detecta se o arquivo usa 'Nome' ou 'Nome do Aluno'
                 if 'Nome' in cabecalhos:
                     coluna_nome_usada = 'Nome'
                 elif 'Nome do Aluno' in cabecalhos:
@@ -215,10 +209,9 @@ def exportar_relatorio():
     registros_finais = []
 
     for matr, nome in alunos_validos.items():
-        # Cria registro usando a chave detectada
+
         registro_aluno = historico_geral.get(matr, {'Matricula': matr, coluna_nome_usada: nome})
-        
-        # Garante que estamos atualizando a coluna certa
+
         registro_aluno[coluna_nome_usada] = nome
         
         status = "AUSENCIA"
